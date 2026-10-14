@@ -1,0 +1,296 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  passwordHash        String
+  name                String
+  role                String               @default("CUSTOMER") // "CUSTOMER" | "ADMIN"
+  phone               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  sessions            Session[]
+  addresses           Address[]
+  carts               Cart[]
+  wishlistItems       WishlistItem[]
+  orders              Order[]
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([email])
+}
+
+model Session {
+  id        String   @id // session token (cryptographically random hex)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName     String
+  phone        String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  postalCode   String
+  country      String   @default("India")
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  orders       Order[]
+
+  @@index([userId])
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  image       String?
+  parentId    String?
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("SubCategories")
+  products    Product[]
+  createdAt   DateTime   @default(now())
+
+  @@index([slug])
+}
+
+model Product {
+  id             String          @id @default(uuid())
+  title          String
+  slug           String          @unique
+  description    String
+  price          Float
+  compareAtPrice Float?
+  categoryId     String
+  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand          String
+  rating         Float           @default(4.5)
+  reviewCount    Int             @default(12)
+  stock          Int             @default(50)
+  isFeatured     Boolean         @default(false)
+  isActive       Boolean         @default(true)
+  specifications String? // JSON stringified key-values
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  images         ProductImage[]
+  inventoryLogs  Inventory[]
+  cartItems      CartItem[]
+  wishlistItems  WishlistItem[]
+  orderItems     OrderItem[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([price])
+  @@index([rating])
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String?
+  isPrimary Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Inventory {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changeType    String // "RESTOCK" | "SALE" | "CANCEL_RESTORE" | "ADJUSTMENT"
+  quantityDelta Int
+  remainingStock Int
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Cart {
+  id         String     @id @default(uuid())
+  userId     String?
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestToken String?    @unique
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  items      CartItem[]
+
+  @@index([userId])
+  @@index([guestToken])
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@index([productId])
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+model Order {
+  id                      String      @id @default(uuid())
+  orderNumber             String      @unique // e.g. SP-2026-94821
+  userId                  String
+  user                    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status                  String      @default("PENDING") // PENDING, PAID, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  subtotal                Float
+  discount                Float       @default(0)
+  shippingFee             Float       @default(0)
+  tax                     Float       @default(0)
+  total                   Float
+  couponCode              String?
+  addressId               String?
+  address                 Address?    @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  shippingAddressSnapshot String // JSON representation of address at checkout
+  shippingMethod          String      @default("Standard Delivery")
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+  items                   OrderItem[]
+  payments                Payment[]
+  shipments               Shipment[]
+
+  @@index([userId])
+  @@index([orderNumber])
+  @@index([status])
+}
+
+model OrderItem {
+  id              String   @id @default(uuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  historicalTitle String
+  historicalPrice Float
+  historicalSku   String?
+  quantity        Int
+  total           Float
+  image           String?
+  createdAt       DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider      String // "RAZORPAY" | "MOCK_DEV"
+  transactionId String   @unique
+  paymentOrderId String? // Razorpay order id: order_xxxx
+  amount        Float
+  currency      String   @default("INR")
+  status        String   @default("PENDING") // PENDING, SUCCESS, FAILED, REFUNDED
+  signature     String?
+  payload       String? // JSON string
+  createdAt     DateTime @default(now())
+
+  @@index([orderId])
+  @@index([transactionId])
+}
+
+model Shipment {
+  id                String    @id @default(uuid())
+  orderId           String
+  order             Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  trackingNumber    String    @unique
+  carrier           String    @default("SphereExpress Logistics")
+  status            String    @default("PREPARING") // PREPARING, DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED
+  estimatedDelivery DateTime?
+  currentCity       String    @default("Central Distribution Hub, Bengaluru")
+  updates           String // JSON array of tracking updates [{ time, status, message, location }]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([trackingNumber])
+}
+
+model Coupon {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  discountType  String // "PERCENTAGE" | "FIXED"
+  discountValue Float
+  minOrderValue Float     @default(0)
+  maxDiscount   Float?
+  validFrom     DateTime  @default(now())
+  validUntil    DateTime
+  usageLimit    Int       @default(1000)
+  timesUsed     Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  @@index([code])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // e.g. "USER_LOGIN", "ORDER_CREATED", "STATUS_UPDATED", "PRODUCT_MODIFIED"
+  entityType String // e.g. "Order", "Product", "User"
+  entityId   String?
+  details    String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tokenHash])
+  @@index([userId])
+}

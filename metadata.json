@@ -1,0 +1,6 @@
+{
+  "name": "ShopSphere - Full-Stack E-Commerce",
+  "description": "Interactive Amazon-inspired e-commerce demo website with product catalog, search & filters, shopping cart, demo checkout, and order history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
